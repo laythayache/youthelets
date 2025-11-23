@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Matching System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎯 Face Matching System</h1>
+            <p class="subtitle">Find faces across your photo collection</p>
+        </header>
+
+        <div class="main-content">
+            {% if not insightface_available %}
+            <!-- InsightFace Error Warning -->
+            <section class="card" style="background-color: #fff3cd; border: 2px solid #ffc107;">
+                <h2 style="color: #856404;">⚠️ InsightFace Not Available</h2>
+                <p style="color: #856404; font-size: 16px; line-height: 1.6;">
+                    <strong>The face matching features are currently disabled.</strong><br>
+                    InsightFace 0.7.3 is required but not properly installed.
+                </p>
+                <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                    <h3 style="margin-top: 0; color: #333;">To Fix This:</h3>
+                    <ol style="color: #333; line-height: 1.8;">
+                        <li><strong>Install Microsoft C++ Build Tools:</strong><br>
+                            <a href="https://visualstudio.microsoft.com/visual-cpp-build-tools/" target="_blank" style="color: #007bff;">
+                                Download from Microsoft</a>
+                        </li>
+                        <li><strong>Reinstall InsightFace:</strong><br>
+                            <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px; display: inline-block; margin-top: 5px;">
+                                pip uninstall insightface && pip install insightface==0.7.3
+                            </code>
+                        </li>
+                        <li><strong>Restart the server:</strong><br>
+                            Stop this server (Ctrl+C) and run <code>python app.py</code> again
+                        </li>
+                    </ol>
+                    <p style="margin-top: 15px; color: #666; font-size: 14px;">
+                        See <strong>SETUP_LOCAL.md</strong> for detailed instructions.
+                    </p>
+                </div>
+            </section>
+            {% endif %}
+            <!-- Step 1: Data Source Selection -->
+            <section class="card" id="step1">
+                <h2>Step 1: Select Data Source</h2>
+                <div class="source-options">
+                    <div class="option-card" id="local-option">
+                        <div class="option-icon">📁</div>
+                        <h3>Local Folders</h3>
+                        <p>Use images from your local file system</p>
+                    </div>
+                    <div class="option-card" id="drive-option">
+                        <div class="option-icon">☁️</div>
+                        <h3>Google Drive</h3>
+                        <p>Connect to Google Drive folders</p>
+                    </div>
+                </div>
+
+                <!-- Local Folder Input -->
+                <div class="input-section" id="local-input" style="display: none;">
+                    <div class="input-group">
+                        <label>Reference Folder (Optional):</label>
+                        <input type="text" id="folder1" placeholder="e.g., C:/Users/Photos/Reference" class="input-field">
+                    </div>
+                    <div class="input-group">
+                        <label>Event Photos Folder:</label>
+                        <input type="text" id="folder2" placeholder="e.g., C:/Users/Photos/Events" class="input-field" required>
+                    </div>
+                    <button class="btn btn-primary" onclick="scanLocalFolders()">Scan Folders</button>
+                </div>
+
+                <!-- Google Drive Input -->
+                <div class="input-section" id="drive-input" style="display: none;">
+                    <div class="auth-section">
+                        <button class="btn btn-google" onclick="authenticateDrive()">🔐 Authenticate Google Drive</button>
+                        <div id="auth-status"></div>
+                    </div>
+                    <div class="input-group" id="drive-folders" style="display: none;">
+                        <label>Reference Folder ID (Optional):</label>
+                        <input type="text" id="folder1-id" placeholder="Google Drive Folder ID" class="input-field">
+                        <small>Right-click folder in Drive → Get link → Copy folder ID from URL</small>
+                    </div>
+                    <div class="input-group" id="drive-folders">
+                        <label>Event Photos Folder ID:</label>
+                        <input type="text" id="folder2-id" placeholder="Google Drive Folder ID" class="input-field" required>
+                        <small>Right-click folder in Drive → Get link → Copy folder ID from URL</small>
+                    </div>
+                    <button class="btn btn-primary" onclick="scanDriveFolders()" id="scan-drive-btn" style="display: none;">Load from Drive</button>
+                </div>
+            </section>
+
+            <!-- Step 2: Image Gallery -->
+            <section class="card" id="step2" style="display: none;">
+                <h2>Step 2: Select Reference Image</h2>
+                <div class="gallery-controls">
+                    <button class="btn btn-secondary" onclick="prevPage()">← Prev</button>
+                    <span id="page-info">Page 1 / 1</span>
+                    <button class="btn btn-secondary" onclick="nextPage()">Next →</button>
+                </div>
+                <div class="gallery" id="image-gallery"></div>
+            </section>
+
+            <!-- Step 3: Crop Face -->
+            <section class="card" id="step3" style="display: none;">
+                <h2>Step 3: Crop Reference Face</h2>
+                <div class="crop-container">
+                    <div class="crop-image-wrapper">
+                        <img id="crop-image" alt="Image to crop">
+                        <canvas id="crop-canvas"></canvas>
+                    </div>
+                    <div class="crop-controls">
+                        <div class="preview-section">
+                            <h3>Preview</h3>
+                            <div id="crop-preview"></div>
+                        </div>
+                        <button class="btn btn-success" onclick="setReferenceFace()">🎯 Set Reference Face</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: Run Matching -->
+            <section class="card" id="step4" style="display: none;">
+                <h2>Step 4: Run Face Matching</h2>
+                <div class="matching-section">
+                    <p>Ready to match faces across <span id="total-images-count">0</span> images</p>
+                    <button class="btn btn-warning btn-large" onclick="runMatching()">🔍 Run Matching</button>
+                    <div id="matching-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <p id="progress-text">Processing...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 5: Results -->
+            <section class="card" id="step5" style="display: none;">
+                <h2>Step 5: View Results</h2>
+                <div class="results-summary">
+                    <div class="stat-card">
+                        <div class="stat-value" id="matched-count">0</div>
+                        <div class="stat-label">Matched</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="total-count">0</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="match-rate">0%</div>
+                        <div class="stat-label">Match Rate</div>
+                    </div>
+                </div>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th>Path</th>
+                                <th>Similarity</th>
+                                <th>Faces</th>
+                                <th>Match</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Step 6: Export -->
+            <section class="card" id="step6" style="display: none;">
+                <h2>Step 6: Export Matched Images</h2>
+                <div class="export-section">
+                    <div class="input-group">
+                        <label>Export Folder Name:</label>
+                        <input type="text" id="export-folder" value="matched_photos" class="input-field">
+                    </div>
+                    <button class="btn btn-info btn-large" onclick="exportMatches()">📂 Export Matches</button>
+                    <div id="export-status"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        // Pass auto-load configuration to JavaScript
+        const autoLoadEnabled = {{ 'true' if auto_load_enabled else 'false' }};
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
