@@ -16,31 +16,28 @@
 
         <div class="main-content">
             {% if not insightface_available %}
-            <!-- InsightFace Error Warning -->
+            <!-- Vision API Error Warning -->
             <section class="card" style="background-color: #fff3cd; border: 2px solid #ffc107;">
-                <h2 style="color: #856404;">⚠️ InsightFace Not Available</h2>
+                <h2 style="color: #856404;">⚠️ Face Detection Not Available</h2>
                 <p style="color: #856404; font-size: 16px; line-height: 1.6;">
-                    <strong>The face matching features are currently disabled.</strong><br>
-                    InsightFace 0.7.3 is required but not properly installed.
+                    <strong>The face detection and matching features are currently disabled.</strong><br>
+                    This app now uses Google Cloud Vision for face detection and a local embedding model for matching.
                 </p>
                 <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
                     <h3 style="margin-top: 0; color: #333;">To Fix This:</h3>
                     <ol style="color: #333; line-height: 1.8;">
-                        <li><strong>Install Microsoft C++ Build Tools:</strong><br>
-                            <a href="https://visualstudio.microsoft.com/visual-cpp-build-tools/" target="_blank" style="color: #007bff;">
-                                Download from Microsoft</a>
+                        <li><strong>Enable Google Cloud credentials:</strong><br>
+                            Set the environment variable <code>GOOGLE_APPLICATION_CREDENTIALS</code> to the path of your service account JSON key.
                         </li>
-                        <li><strong>Reinstall InsightFace:</strong><br>
-                            <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px; display: inline-block; margin-top: 5px;">
-                                pip uninstall insightface && pip install insightface==0.7.3
-                            </code>
+                        <li><strong>Install dependencies:</strong><br>
+                            Ensure the required Python packages are installed from <code>requirements.txt</code>.
                         </li>
                         <li><strong>Restart the server:</strong><br>
                             Stop this server (Ctrl+C) and run <code>python app.py</code> again
                         </li>
                     </ol>
                     <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                        See <strong>SETUP_LOCAL.md</strong> for detailed instructions.
+                        See <strong>GUIDE.md</strong> for detailed instructions on enabling Google Cloud Vision.
                     </p>
                 </div>
             </section>

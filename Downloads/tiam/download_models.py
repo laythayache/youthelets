@@ -1,35 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""Download InsightFace models"""
-import os
-import sys
+# This script is deprecated.
+# The project no longer uses InsightFace. Face detection is performed
+# by Google Cloud Vision and embeddings are created locally with
+# facenet-pytorch. There is no model download step required here.
 
-# Set UTF-8 encoding for Windows
-if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-
-try:
-    from insightface.model_zoo import get_model
-    print("Downloading InsightFace models...")
-    print("This may take a few minutes...")
-    
-    models_to_download = ['buffalo_l']
-    
-    for model_name in models_to_download:
-        try:
-            print(f"\nDownloading {model_name}...")
-            model = get_model(model_name, download=True)
-            if model:
-                print(f"[OK] {model_name} downloaded successfully")
-            else:
-                print(f"[WARNING] {model_name} download returned None")
-        except Exception as e:
-            print(f"[ERROR] Error downloading {model_name}: {e}")
-    
-    print("\nModel download complete!")
-    print("You can now run the Flask app with: python app.py")
-except ImportError as e:
-    print(f"Error: Could not import insightface: {e}")
-    print("Please install insightface first: pip install insightface")
+print("This script is deprecated. The project now uses Google Cloud Vision and facenet-pytorch.")
+print("Configure Google Cloud credentials with the GOOGLE_APPLICATION_CREDENTIALS environment variable.")
+print("Install dependencies: pip install -r requirements.txt")
 

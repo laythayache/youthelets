@@ -6,7 +6,7 @@ A modern web application for face recognition and matching across photo collecti
 
 ## ✨ Features
 
-- 🎯 **Face Detection & Matching**: Uses InsightFace for accurate face recognition
+- 🎯 **Face Detection & Matching**: Uses Google Cloud Vision for detection and `facenet-pytorch` for embeddings/matching
 - ☁️ **Google Drive Integration**: Connect and load images directly from Google Drive
 - 📁 **Local Folder Support**: Also works with local file system folders
 - 🖼️ **Interactive UI**: Modern, responsive red-themed web interface

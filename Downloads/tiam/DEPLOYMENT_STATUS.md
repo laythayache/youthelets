@@ -18,7 +18,7 @@
    - ✅ pandas 2.3.3
    - ✅ torch 2.9.1
    - ✅ All Google API packages
-   - ⚠️ insightface==0.7.3 (will build on Linux/Render, requires C++ tools on Windows)
+   - ✅ Google Cloud Vision + facenet-pytorch (no native C++ build tools required)
 
 3. **Requirements.txt Updated**
    - Clean, production-ready requirements.txt
@@ -35,11 +35,9 @@
 
 ### ⚠️ Important Notes
 
-**InsightFace on Windows:**
-- InsightFace 0.7.3 requires Microsoft C++ Build Tools on Windows
-- It **will build successfully on Render (Linux)** where pre-built wheels are available
-- Local testing without C++ tools: The app will start but face matching will be disabled
-- To test locally with InsightFace: Install Microsoft C++ Build Tools
+**Notes on face detection & embeddings:**
+- This project uses Google Cloud Vision for detection (requires service account/credentials).
+- Embeddings are generated locally using `facenet-pytorch` (PyTorch-based). Ensure `torch` is installed.
 
 **Git Remote:**
 - No git remote configured yet
@@ -56,8 +54,7 @@
 
 2. **Deploy to Render:**
    - Follow `DEPLOY_TO_RENDER.md`
-   - Render will build InsightFace successfully on Linux
-   - First deployment takes 10-15 minutes (model downloads)
+   - First deployment may take several minutes while the embedding model weights download
 
 3. **Environment Variables on Render:**
    - `SECRET_KEY` - Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`
@@ -67,21 +64,20 @@
 
 ### ✅ Verification
 
-**Local (Windows - without InsightFace):**
+**Local (Windows):**
 ```bash
 conda activate faceapp
-python -c "import flask, numpy, pandas, onnxruntime, cv2; print('Core dependencies OK')"
-# InsightFace will fail locally without C++ tools - this is expected
+python -c "import flask, numpy, pandas, cv2; print('Core dependencies OK')"
 ```
 
 **On Render (Linux):**
-- All dependencies including InsightFace will install successfully
-- Models will download automatically on first run
+- All dependencies will install successfully
+- Embedding weights (facenet-pytorch) may download on first run
 
 ### 📋 Summary
 
 - ✅ Python 3.11 environment ready
-- ✅ Dependencies installed (except InsightFace on Windows - expected)
+- ✅ Dependencies installed
 - ✅ requirements.txt production-ready for Linux
 - ✅ Git commits completed
 - ⚠️ Git remote needs to be configured

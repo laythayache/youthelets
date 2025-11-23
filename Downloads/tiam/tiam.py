@@ -11,7 +11,7 @@ Original file is located at
 #sma3 ya damme, el code works, bass fi the hard part,actually understanding it
 #fa 3tebre this green writing is your cheat sheet
 #hayda el line le tahet hayde is used to download the libraries
-!pip install -q insightface onnxruntime-gpu opencv-python-headless tqdm pandas ipywidgets
+!pip install -q google-cloud-vision facenet-pytorch torchvision opencv-python-headless tqdm pandas ipywidgets
 #w halla2 men hone
 import os, cv2, shutil, time
 import numpy as np
@@ -23,7 +23,8 @@ import ipywidgets as widgets
 from pathlib import Path
 import torch
 from PIL import Image
-from insightface.app import FaceAnalysis
+# InsightFace references removed. This Colab script can use Google Cloud Vision + facenet-pytorch instead.
+# from insightface.app import FaceAnalysis
 #la hone kel hole are importing the libraries, ya3ne awal shi nazallnehon men el internet
 #ba3den we called them inside our code,
 #libraries are premade tools, that help us during our project
@@ -51,15 +52,8 @@ print("EVENT FOLDER 2:", FOLDER_2)#<--same
 print("OUTPUT:", OUTPUT_DIR)#<---same
 
 
-# Load InsightFace, mashi Insight is the library we called before
-app = FaceAnalysis("buffalo_l",
-                   providers=["CUDAExecutionProvider","CPUExecutionProvider"])
-
-ctx = 0 if torch.cuda.is_available() else -1
-app.prepare(ctx_id=ctx, det_size=(640,640))#<--- this is just calling the GPU, if no Gpu, it will run on CPU
-
-print("Running on:",
-      torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU ONLY")
+# InsightFace initialization removed. Use Google Cloud Vision for detection
+print("Note: InsightFace usage removed. Use Google Cloud Vision for detection and facenet-pytorch for embeddings in this notebook/script.")
 
 #so images come in all shapes and forms, depending 3al camera aw wtvr format each phone chooses
 #this section is basically loading all images, in all types

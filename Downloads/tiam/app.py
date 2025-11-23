@@ -15,7 +15,10 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file, session, make_response
 from werkzeug.utils import secure_filename
 import torch
-from insightface.app import FaceAnalysis
+from google.cloud import vision
+from facenet_pytorch import InceptionResnetV1
+import torchvision.transforms as transforms
+from PIL import Image
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import service_account
@@ -95,53 +98,34 @@ else:
     YOUTHELETES_DRIVE_FOLDER_ID = os.environ.get('YOUTHELETES_DRIVE_FOLDER_ID', '')
 
 # Initialize InsightFace (allow server to start even if this fails)
-print("Loading InsightFace model...")
-face_app = None
+print("Initializing Google Cloud Vision client and embedding model...")
+vision_client = None
+embedding_model = None
 insightface_error = None
 
 try:
-    # Try newer API (0.7.3+) with providers
-    face_app = FaceAnalysis("buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    print("Using InsightFace 0.7.3+ API")
-    ctx = 0 if torch.cuda.is_available() else -1
-    face_app.prepare(ctx_id=ctx, det_size=(640, 640))
+    # Vision client (uses application default credentials or env var GOOGLE_APPLICATION_CREDENTIALS)
+    vision_client = vision.ImageAnnotatorClient()
+    # Load facenet-pytorch embedding model to generate face embeddings (replaces InsightFace embeddings)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    embedding_model = InceptionResnetV1(pretrained='vggface2').to(device).eval()
+    # Preprocessing transform for facenet-pytorch (expects 160x160 RGB, normalized to [-1,1])
+    preprocess = transforms.Compose([
+        transforms.Resize((160, 160)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
     try:
         device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU ONLY'
-    except:
+    except Exception:
         device_name = 'CPU ONLY'
-    print(f"Running on: {device_name}")
-except TypeError:
-    # Fallback to older API (0.2.1) - uses (name, root) signature
-    print("Using InsightFace 0.2.1 API - model will be downloaded if needed...")
-    try:
-        # Try to initialize - it will download model automatically if not present
-        face_app = FaceAnalysis("buffalo_l", root='~/.insightface/models')
-        print("Model initialized successfully")
-        ctx = 0 if torch.cuda.is_available() else -1
-        face_app.prepare(ctx_id=ctx, det_size=(640, 640))
-        try:
-            device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU ONLY'
-        except:
-            device_name = 'CPU ONLY'
-        print(f"Running on: {device_name}")
-    except Exception as e:
-        insightface_error = str(e)
-        print(f"ERROR: Could not initialize InsightFace: {e}")
-        print("\n" + "="*60)
-        print("INSIGHTFACE SETUP REQUIRED")
-        print("="*60)
-        print("The application requires InsightFace 0.7.3 with models.")
-        print("Current version: 0.2.1 (incompatible)")
-        print("\nTo fix this:")
-        print("1. Install Microsoft C++ Build Tools:")
-        print("   https://visualstudio.microsoft.com/visual-cpp-build-tools/")
-        print("2. Then run: pip uninstall insightface && pip install insightface==0.7.3")
-        print("\nThe web server will start, but face matching features will be disabled.")
-        print("="*60 + "\n")
+    print(f"Vision client initialized. Running on: {device_name}")
 except Exception as e:
     insightface_error = str(e)
-    print(f"ERROR: Failed to initialize InsightFace: {e}")
-    print("Server will start but face matching will be disabled.")
+    vision_client = None
+    embedding_model = None
+    preprocess = None
+    print(f"WARNING: Google Cloud Vision or embedding model initialization failed: {e}")
 
 # Global state
 VALID_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -171,15 +155,53 @@ def resize_max(img, max_dim=1280):
 
 def get_faces(img):
     """Extract faces from image"""
-    if face_app is None:
-        raise RuntimeError("InsightFace is not initialized. Please install InsightFace 0.7.3. See GUIDE.md for instructions.")
+    if vision_client is None or embedding_model is None:
+        raise RuntimeError("Google Cloud Vision or embedding model not initialized. Set up GOOGLE_APPLICATION_CREDENTIALS and ensure dependencies are installed.")
+
+    # Convert BGR (cv2) image to JPEG bytes
+    ok, jpg = cv2.imencode('.jpg', img)
+    if not ok:
+        return []
+    content = jpg.tobytes()
+
+    image = vision.Image(content=content)
+    response = vision_client.face_detection(image=image)
+    annotations = response.face_annotations
+
     faces = []
-    for f in face_app.get(img):
+    h, w = img.shape[:2]
+    for ann in annotations:
+        # bounding_poly may contain vertices; compute bbox min/max
+        xs = [v.x for v in ann.bounding_poly.vertices]
+        ys = [v.y for v in ann.bounding_poly.vertices]
+        if not xs or not ys:
+            continue
+        x1 = max(0, int(min(xs)))
+        y1 = max(0, int(min(ys)))
+        x2 = min(w - 1, int(max(xs)))
+        y2 = min(h - 1, int(max(ys)))
+
+        # Crop face region
+        face_crop = img[y1:y2, x1:x2]
+        emb = None
+        if face_crop.size > 0:
+            # Convert BGR to RGB and to PIL Image
+            face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+            face_pil = Image.fromarray(face_rgb)
+            # Preprocess and get embedding
+            x_in = preprocess(face_pil).unsqueeze(0).to(device)
+            with torch.no_grad():
+                v = embedding_model(x_in)
+            emb = v[0].cpu().numpy().astype(np.float32)
+            # Normalize
+            emb = emb / (np.linalg.norm(emb) + 1e-9)
+
         faces.append({
-            "bbox": f.bbox.astype(int),
-            "embedding": f.normed_embedding.astype(np.float32),
-            "score": float(f.det_score)
+            "bbox": np.array([x1, y1, x2, y2], dtype=int),
+            "embedding": emb,
+            "score": float(ann.detection_confidence)
         })
+
     return faces
 
 def cosine(a, b):
@@ -213,7 +235,7 @@ def index():
     # Check if auto-load is configured
     auto_load_enabled = bool(YOUTHELETES_DRIVE_FOLDER_ID and os.path.exists(SERVICE_ACCOUNT_FILE))
     return render_template('index.html', 
-                         insightface_available=face_app is not None, 
+                         insightface_available=(vision_client is not None and embedding_model is not None), 
                          insightface_error=insightface_error,
                          auto_load_enabled=auto_load_enabled,
                          drive_folder_id=YOUTHELETES_DRIVE_FOLDER_ID if auto_load_enabled else '')

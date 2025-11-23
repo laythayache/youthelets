@@ -17,7 +17,7 @@ A modern web application for face recognition and matching across photo collecti
 
 ## ✨ Features
 
-- 🎯 **Face Detection & Matching**: Uses InsightFace for accurate face recognition
+- 🎯 **Face Detection & Matching**: Uses Google Cloud Vision for face detection and a local embedding model (`facenet-pytorch`) for matching
 - ☁️ **Google Drive Integration**: Connect and load images directly from Google Drive
 - 📁 **Local Folder Support**: Also works with local file system folders
 - 🖼️ **Interactive UI**: Modern, responsive red-themed web interface
@@ -35,10 +35,7 @@ A modern web application for face recognition and matching across photo collecti
 pip install -r requirements.txt
 ```
 
-**Note**: If you're on Windows and get errors installing InsightFace, you need Microsoft C++ Build Tools:
-1. Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
-2. Install with "C++ build tools" workload
-3. Then run: `pip install insightface==0.7.3`
+This project now uses `google-cloud-vision` for face detection and `facenet-pytorch` to compute face embeddings locally. Ensure you have `GOOGLE_APPLICATION_CREDENTIALS` set to a service account JSON key for Vision API access.
 
 ### Step 2: Google Drive API Setup (Optional)
 
@@ -87,7 +84,7 @@ python app.py
 
 The application will be available at `http://localhost:5000`
 
-**First Run**: InsightFace models will download automatically (takes 5-10 minutes). Be patient!
+**First Run**: The embedding model (`facenet-pytorch`) may download weights on first run (takes a few minutes). Ensure your environment has network access.
 
 ---
 
@@ -284,9 +281,10 @@ Edit in `app.py`:
 
 ### Model Settings
 
-- **Model**: `buffalo_l` (InsightFace)
-- **Detection Size**: 640x640 pixels
-- **GPU Support**: Automatically uses CUDA if available, falls back to CPU
+- **Detection**: Google Cloud Vision Face Detection
+- **Embedding Model**: `facenet-pytorch` (InceptionResnetV1 pretrained on VGGFace2)
+- **Input Size for Embeddings**: 160x160 pixels
+- **GPU Support**: Uses CUDA if available for embedding model (PyTorch), otherwise CPU
 
 ---
 
@@ -294,10 +292,9 @@ Edit in `app.py`:
 
 ### Local Setup Issues
 
-**InsightFace Installation Fails**:
-- Install Microsoft C++ Build Tools (Windows)
-- Or use pre-built wheels: `pip install --only-binary :all: insightface`
-- See `SETUP_LOCAL.md` for details
+**Google Cloud Vision / Embedding Model Issues**:
+- Ensure `GOOGLE_APPLICATION_CREDENTIALS` is set to a valid service account JSON key with Vision API enabled.
+- If `facenet-pytorch` fails to load pretrained weights, ensure the environment has outbound network access and enough disk space.
 
 **No Face Detected**:
 - Ensure cropped region contains a clear, front-facing face
@@ -360,11 +357,10 @@ Edit in `app.py`:
 
 ## 📝 Technical Details
 
-### Face Detection
-- **Library**: InsightFace
-- **Model**: buffalo_l
-- **Method**: RetinaFace detection + ArcFace recognition
-- **Embedding Dimension**: 512
+### Face Detection & Embeddings
+- **Detection**: Google Cloud Vision Face Detection API (returns bounding boxes, landmarks, and confidence scores)
+- **Embedding Model**: `facenet-pytorch` InceptionResnetV1 (512-d embeddings)
+- **Method**: Detect faces with Vision, crop faces locally and compute embeddings with facenet-pytorch
 
 ### Similarity Metric
 - **Method**: Cosine similarity

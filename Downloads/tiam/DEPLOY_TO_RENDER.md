@@ -137,8 +137,8 @@ Since `service_account.json` is in `.gitignore`, you need to upload it separatel
 ### 4.5 Deploy
 
 1. Click **"Create Web Service"** at the bottom
-2. Wait 10-15 minutes for first deployment
-   - First time downloads InsightFace models (~500MB)
+2. Wait 5-10 minutes for first deployment
+   - The embedding model (`facenet-pytorch`) may download weights on first run (a few hundred MB)
    - You'll see build logs in real-time
 3. Once deployed, you'll get a URL like: `https://face-matching-app.onrender.com`
 
