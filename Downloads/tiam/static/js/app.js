@@ -176,46 +176,177 @@ function showAuthStatus(message, type) {
     const statusDiv = document.getElementById('auth-status');
     statusDiv.textContent = message;
     statusDiv.className = type === 'success' ? 'auth-success-msg' : 'auth-error-msg';
-    
     if (type === 'success') {
-        document.getElementById('scan-drive-btn').style.display = 'block';
-        document.getElementById('drive-folders').style.display = 'block';
+        document.getElementById('drive-browser').style.display = 'block';
+        driveOpen('root');
     }
 }
 
-async function scanDriveFolders() {
-    const folder1Id = document.getElementById('folder1-id').value.trim();
-    const folder2Id = document.getElementById('folder2-id').value.trim();
-    
-    if (!folder2Id) {
-        alert('Please provide at least the Event Photos Folder ID');
-        return;
-    }
-    
+// --- Google Drive picker -------------------------------------------------
+// Selection survives moving between folders, so photos can be gathered from
+// several places and imported in one go.
+let drivePickedFiles = new Map();    // fileId -> name
+let drivePickedFolders = new Map();  // folderId -> name
+let driveCurrent = 'root';
+let driveCurrentName = 'My Drive';
+
+async function driveOpen(parentId) {
+    const loading = document.getElementById('drive-loading');
+    loading.style.display = 'block';
     try {
-        const response = await fetch('/api/drive/folders', {
+        const response = await fetch('/api/drive/browse', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder1_id: folder1Id, folder2_id: folder2Id })
+            body: JSON.stringify({ parent_id: parentId || 'root' })
         });
-        
         const data = await response.json();
-        
-        if (response.ok) {
-            allImages = data.images;
-            document.getElementById('total-images-count').textContent = allImages.length;
-            showAuthStatus('Images loaded successfully!', 'success');
-            showStep(2);
-            loadGallery(1);
-        } else {
-            if (response.status === 401) {
-                showAuthStatus('Please authenticate first', 'error');
+        if (!response.ok) {
+            if (data.auth_required) {
+                showAuthStatus('Connect your Google Drive first', 'error');
+                document.getElementById('drive-browser').style.display = 'none';
             } else {
-                alert('Error: ' + data.error);
+                alert('Drive error: ' + data.error);
             }
+            return;
         }
+        driveCurrent = data.parent_id;
+        renderDrive(data);
     } catch (error) {
-        alert('Error loading from Drive: ' + error.message);
+        alert('Drive error: ' + error.message);
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderDrive(data) {
+    const trail = document.getElementById('drive-trail');
+    trail.innerHTML = '';
+    const crumbs = [{ id: 'root', name: 'My Drive' }].concat(data.trail);
+    driveCurrentName = crumbs[crumbs.length - 1].name;
+    crumbs.forEach((c, i) => {
+        const a = document.createElement('a');
+        a.href = 'javascript:void(0)';
+        a.textContent = c.name;
+        a.onclick = () => driveOpen(c.id);
+        trail.appendChild(a);
+        if (i < crumbs.length - 1) trail.appendChild(document.createTextNode('  >  '));
+    });
+
+    const folders = document.getElementById('drive-folders-list');
+    folders.innerHTML = '';
+    if (data.folders.length === 0) {
+        folders.innerHTML = '<em>No subfolders here.</em>';
+    }
+    data.folders.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'drive-row';
+        const open = document.createElement('a');
+        open.href = 'javascript:void(0)';
+        open.textContent = 'Folder: ' + f.name;
+        open.onclick = () => driveOpen(f.id);
+        const add = document.createElement('button');
+        add.className = 'btn btn-secondary btn-small';
+        add.textContent = drivePickedFolders.has(f.id) ? 'Added' : 'Add folder';
+        add.onclick = () => {
+            if (drivePickedFolders.has(f.id)) drivePickedFolders.delete(f.id);
+            else drivePickedFolders.set(f.id, f.name);
+            add.textContent = drivePickedFolders.has(f.id) ? 'Added' : 'Add folder';
+            renderDriveSelection();
+        };
+        row.appendChild(open);
+        row.appendChild(add);
+        folders.appendChild(row);
+    });
+
+    const grid = document.getElementById('drive-images-grid');
+    grid.innerHTML = '';
+    document.getElementById('drive-image-count').textContent =
+        data.images.length ? '(' + data.images.length + (data.truncated ? '+' : '') + ')' : '';
+    if (data.images.length === 0) {
+        grid.innerHTML = '<em>No photos directly in this folder.</em>';
+    }
+    data.images.forEach(img => {
+        const cell = document.createElement('div');
+        cell.className = 'drive-cell' + (drivePickedFiles.has(img.id) ? ' picked' : '');
+        cell.title = img.name;
+        if (img.thumbnailLink) {
+            const thumb = document.createElement('img');
+            thumb.src = img.thumbnailLink;
+            thumb.referrerPolicy = 'no-referrer';
+            thumb.loading = 'lazy';
+            cell.appendChild(thumb);
+        } else {
+            cell.appendChild(document.createTextNode(img.name));
+        }
+        cell.onclick = () => {
+            if (drivePickedFiles.has(img.id)) drivePickedFiles.delete(img.id);
+            else drivePickedFiles.set(img.id, img.name);
+            cell.classList.toggle('picked');
+            renderDriveSelection();
+        };
+        grid.appendChild(cell);
+    });
+
+    renderDriveSelection();
+}
+
+function renderDriveSelection() {
+    const n = drivePickedFiles.size, m = drivePickedFolders.size;
+    const box = document.getElementById('drive-selection');
+    box.textContent = (n || m)
+        ? 'Selected: ' + n + ' photo(s) and ' + m + ' folder(s)'
+        : 'Nothing selected yet - click photos, or add a folder.';
+    document.getElementById('drive-import-btn').disabled = !(n || m);
+}
+
+function driveSelectAllHere() {
+    document.querySelectorAll('#drive-images-grid .drive-cell').forEach(c => {
+        if (!c.classList.contains('picked')) c.click();
+    });
+}
+
+function driveAddWholeFolder() {
+    if (driveCurrent === 'root') {
+        alert('Open a folder first, or use "Add folder" next to one in the list.');
+        return;
+    }
+    drivePickedFolders.set(driveCurrent, driveCurrentName);
+    renderDriveSelection();
+}
+
+async function driveImport() {
+    const status = document.getElementById('drive-import-status');
+    status.textContent = 'Copying from Google Drive - whole folders can take a while.';
+    document.getElementById('drive-import-btn').disabled = true;
+    try {
+        const response = await fetch('/api/drive/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_ids: Array.from(drivePickedFiles.keys()),
+                folder_ids: Array.from(drivePickedFolders.keys())
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            status.textContent = '';
+            alert('Error: ' + data.error);
+            return;
+        }
+        if (data.count === 0) {
+            status.textContent = 'Nothing usable was found in that selection.';
+            return;
+        }
+        status.textContent = 'Imported ' + data.count + ' photo(s).';
+        allImages = data.images;
+        document.getElementById('total-images-count').textContent = allImages.length;
+        showStep(2);
+        loadGallery(1);
+    } catch (error) {
+        status.textContent = '';
+        alert('Error importing: ' + error.message);
+    } finally {
+        document.getElementById('drive-import-btn').disabled = false;
     }
 }
 

@@ -73,3 +73,13 @@ The Drive flow needs `client_secrets.json` (an OAuth **client ID**, not a servic
 account) in `/opt/youthelets`. Without it `/auth` returns a clean 400 and the rest of
 the app still works via upload. Redirect URI must be registered as
 `https://169-58-16-247.sslip.io/auth/callback`.
+
+**A service account cannot replace this.** It only ever sees folders that were explicitly
+shared with its address, so it cannot browse someone else's Drive. Browsing needs OAuth.
+
+The picker is ours, not Google's Picker widget: `POST /api/drive/browse` lists one folder
+(subfolders + images + breadcrumb) and `POST /api/drive/import` copies the chosen folders
+and files into the visitor's own upload directory. Both refuse with 401 `auth_required`
+when the visitor has not connected, and Drive ids are validated against
+`^[A-Za-z0-9_-]{1,128}$` before ever reaching a Drive query string - they are refused,
+not escaped.

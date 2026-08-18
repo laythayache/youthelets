@@ -61,21 +61,32 @@
 
                 <!-- Google Drive Input -->
                 <div class="input-section" id="drive-input" style="display: none;">
-                    <div class="auth-section">
-                        <button class="btn btn-google" onclick="authenticateDrive()">🔐 Authenticate Google Drive</button>
+                    <div class="auth-section" id="drive-auth">
+                        <button class="btn btn-google" onclick="authenticateDrive()">🔐 Connect Google Drive</button>
                         <div id="auth-status"></div>
+                        <small>You sign in with your own Google account. Only you see your files.</small>
                     </div>
-                    <div class="input-group" id="drive-folders" style="display: none;">
-                        <label>Reference Folder ID (Optional):</label>
-                        <input type="text" id="folder1-id" placeholder="Google Drive Folder ID" class="input-field">
-                        <small>Right-click folder in Drive → Get link → Copy folder ID from URL</small>
+
+                    <div id="drive-browser" style="display: none;">
+                        <div id="drive-trail" class="drive-trail"></div>
+                        <div id="drive-loading" style="display:none; padding:12px 0;">Loading…</div>
+
+                        <div class="input-group">
+                            <label>Folders</label>
+                            <div id="drive-folders-list" class="drive-list"></div>
+                        </div>
+
+                        <div class="input-group">
+                            <label>Photos in this folder <small id="drive-image-count"></small></label>
+                            <div id="drive-images-grid" class="drive-grid"></div>
+                        </div>
+
+                        <div id="drive-selection" class="drive-selection"></div>
+                        <button class="btn btn-secondary" onclick="driveSelectAllHere()">Select every photo here</button>
+                        <button class="btn btn-secondary" onclick="driveAddWholeFolder()">Add this whole folder (including subfolders)</button>
+                        <button class="btn btn-primary" onclick="driveImport()" id="drive-import-btn">Import selected</button>
+                        <div id="drive-import-status" style="margin-top:12px;"></div>
                     </div>
-                    <div class="input-group" id="drive-folders">
-                        <label>Event Photos Folder ID:</label>
-                        <input type="text" id="folder2-id" placeholder="Google Drive Folder ID" class="input-field" required>
-                        <small>Right-click folder in Drive → Get link → Copy folder ID from URL</small>
-                    </div>
-                    <button class="btn btn-primary" onclick="scanDriveFolders()" id="scan-drive-btn" style="display: none;">Load from Drive</button>
                 </div>
             </section>
 

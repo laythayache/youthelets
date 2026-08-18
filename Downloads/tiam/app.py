@@ -29,6 +29,7 @@ import zipfile
 import requests
 from functools import wraps
 import hashlib
+import re
 import time
 
 app = Flask(__name__)
@@ -531,6 +532,149 @@ def list_drive_folders():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Drive file ids go straight into a Drive query string, so anything that is not a
+# plain id is refused rather than escaped. Fails closed.
+DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
+
+
+def user_drive_service():
+    """Drive client for the signed-in visitor, or None if they have not connected."""
+    if 'credentials' not in session:
+        return None
+    return build('drive', 'v3', credentials=Credentials(**session['credentials']))
+
+
+def check_drive_id(value, allow_root=True):
+    if allow_root and (not value or value == 'root'):
+        return 'root'
+    if not value or not DRIVE_ID_RE.match(value):
+        raise ValueError('Invalid Drive id')
+    return value
+
+
+@app.route('/api/drive/browse', methods=['POST'])
+def browse_drive():
+    """List the folders and images inside one Drive folder, for the picker UI."""
+    service = user_drive_service()
+    if service is None:
+        return jsonify({'error': 'Connect your Google Drive first', 'auth_required': True}), 401
+
+    try:
+        parent = check_drive_id((request.json or {}).get('parent_id'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    try:
+        folders, images = [], []
+        for target, query, fields in (
+            (folders, f"'{parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+             'nextPageToken, files(id, name)'),
+            (images, f"'{parent}' in parents and mimeType contains 'image/' and trashed = false",
+             'nextPageToken, files(id, name, thumbnailLink)'),
+        ):
+            token = None
+            while True:
+                resp = service.files().list(
+                    q=query, fields=fields, pageSize=200, pageToken=token,
+                    orderBy='name', supportsAllDrives=True, includeItemsFromAllDrives=True
+                ).execute()
+                target.extend(resp.get('files', []))
+                token = resp.get('nextPageToken')
+                # a browse UI does not need thousands of rows at once
+                if not token or len(target) >= 600:
+                    break
+
+        # breadcrumb, so the visitor can climb back out
+        trail = []
+        node = parent
+        while node and node != 'root' and len(trail) < 12:
+            meta = service.files().get(fileId=node, fields='id, name, parents',
+                                       supportsAllDrives=True).execute()
+            trail.insert(0, {'id': meta['id'], 'name': meta.get('name', '...')})
+            parents = meta.get('parents') or []
+            node = parents[0] if parents else None
+
+        return jsonify({
+            'parent_id': parent,
+            'trail': trail,
+            'folders': folders,
+            'images': images,
+            'truncated': len(folders) >= 600 or len(images) >= 600
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/drive/import', methods=['POST'])
+def import_from_drive():
+    """Copy the chosen Drive folders and images into this visitor's own workspace."""
+    service = user_drive_service()
+    if service is None:
+        return jsonify({'error': 'Connect your Google Drive first', 'auth_required': True}), 401
+
+    data = request.json or {}
+    try:
+        folder_ids = [check_drive_id(f, allow_root=False) for f in data.get('folder_ids', [])]
+        file_ids = [check_drive_id(f, allow_root=False) for f in data.get('file_ids', [])]
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    if not folder_ids and not file_ids:
+        return jsonify({'error': 'Nothing selected'}), 400
+
+    dest = os.path.join(session_upload_dir(), 'drive')
+    os.makedirs(dest, exist_ok=True)
+    saved = []
+
+    def fetch(file_id, name, into):
+        if os.path.splitext(name)[1].lower() not in VALID_EXT:
+            return
+        path = os.path.join(into, secure_filename(name) or f'{file_id}.jpg')
+        stem, ext = os.path.splitext(path)
+        n = 1
+        while os.path.exists(path):
+            path = f"{stem}_{n}{ext}"
+            n += 1
+        with io.FileIO(path, 'wb') as fh:
+            downloader = MediaIoBaseDownload(fh, service.files().get_media(fileId=file_id))
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+        saved.append(path)
+
+    def walk(folder_id, into, depth=0):
+        if depth >= 5:
+            return
+        os.makedirs(into, exist_ok=True)
+        token = None
+        while True:
+            resp = service.files().list(
+                q=f"'{folder_id}' in parents and trashed = false",
+                fields='nextPageToken, files(id, name, mimeType)', pageSize=200, pageToken=token,
+                supportsAllDrives=True, includeItemsFromAllDrives=True
+            ).execute()
+            for item in resp.get('files', []):
+                if item['mimeType'] == 'application/vnd.google-apps.folder':
+                    walk(item['id'], os.path.join(into, secure_filename(item['name']) or item['id']), depth + 1)
+                elif item['mimeType'].startswith('image/'):
+                    fetch(item['id'], item['name'], into)
+            token = resp.get('nextPageToken')
+            if not token:
+                break
+
+    try:
+        for fid in folder_ids:
+            meta = service.files().get(fileId=fid, fields='name', supportsAllDrives=True).execute()
+            walk(fid, os.path.join(dest, secure_filename(meta.get('name', fid)) or fid))
+        for fid in file_ids:
+            meta = service.files().get(fileId=fid, fields='name', supportsAllDrives=True).execute()
+            fetch(fid, meta.get('name', fid + '.jpg'), dest)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'images': sorted(saved), 'count': len(saved)})
+
 
 @app.route('/api/images/scan', methods=['POST'])
 def scan_local_folders():

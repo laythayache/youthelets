@@ -85,3 +85,10 @@ contabo (`torch-2.9.1+cpu`, `torchvision-0.24.1+cpu`).
 **Root cause:** ufw was dropping traffic from the docker bridge to the host port.
 **Fix:** `ufw allow from 172.18.0.0/16 to 172.18.0.1 port 8501 proto tcp`. Verified 200
 from an external machine, and port 8501 still refused from the internet.
+
+## 2026-08-18 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: e5f771d Calibrate the match threshold against high-resolution photos, not just LFW
+- files: CLAUDE.md, Downloads/tiam/app.py, Downloads/tiam/static/js/app.js
