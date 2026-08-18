@@ -69,17 +69,31 @@ almokhtar and bsheel. Keep it fail-closed: no allowed root matched means refuse.
 
 ## Google Drive
 
-The Drive flow needs `client_secrets.json` (an OAuth **client ID**, not a service
-account) in `/opt/youthelets`. Without it `/auth` returns a clean 400 and the rest of
-the app still works via upload. Redirect URI must be registered as
-`https://169-58-16-247.sslip.io/auth/callback`.
+Uses the **drive.file** scope only, and Google's **Picker**. This is deliberate and
+should not be widened back to `drive.readonly`:
 
-**A service account cannot replace this.** It only ever sees folders that were explicitly
-shared with its address, so it cannot browse someone else's Drive. Browsing needs OAuth.
+- `drive.file` is the only Drive scope Google classes as **non-sensitive**, and apps
+  using only non-sensitive scopes need **no verification**. Anyone can sign in, with no
+  warning screen and no expiry.
+- `drive.readonly` is **restricted**: 100 hand-listed test users, an unverified-app
+  warning, consent expiring every 7 days, and the only escape is restricted-scope
+  verification plus an annual third-party security assessment ($500-$4,500/yr) on a
+  domain you own. `169-58-16-247.sslip.io` would not qualify.
+- The consequence: **you cannot list a visitor's Drive under `drive.file`.** A custom
+  folder browser was built and then removed for exactly this reason. Google's Picker is
+  the sanctioned way in, and the app only sees what the visitor picks.
 
-The picker is ours, not Google's Picker widget: `POST /api/drive/browse` lists one folder
-(subfolders + images + breadcrumb) and `POST /api/drive/import` copies the chosen folders
-and files into the visitor's own upload directory. Both refuse with 401 `auth_required`
-when the visitor has not connected, and Drive ids are validated against
-`^[A-Za-z0-9_-]{1,128}$` before ever reaching a Drive query string - they are refused,
-not escaped.
+Needs two things in `/opt/youthelets`:
+- `client_secrets.json` - the OAuth **client ID** (Web application), redirect URI
+  `https://169-58-16-247.sslip.io/auth/callback`. Not a service account: a service
+  account only sees folders shared with its address and cannot browse a Drive at all.
+- `GOOGLE_API_KEY` in `.env` - the Picker's developerKey. The **Google Picker API** and
+  the **Google Drive API** must both be enabled on the project.
+
+Without either, `/auth` and `/api/drive/picker-config` return a clean explanation and
+the Drive card says so up front; upload still works.
+
+**Open question, unresolved in Google's own docs:** whether picking a *folder* in the
+Picker extends `drive.file` access to the files inside it. `/api/drive/import` counts
+folders it cannot open and tells the visitor to select the photos instead, rather than
+failing the whole import. Settle this the first time a real Drive is connected.
