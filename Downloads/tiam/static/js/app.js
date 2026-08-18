@@ -109,34 +109,51 @@ function selectSource(source) {
     }
 }
 
-async function scanLocalFolders() {
-    const folder1 = document.getElementById('folder1').value.trim();
-    const folder2 = document.getElementById('folder2').value.trim();
-    
-    if (!folder2) {
-        alert('Please provide at least the Event Photos Folder');
+async function uploadPhotos() {
+    const input = document.getElementById('photo-files');
+    const status = document.getElementById('upload-status');
+    const files = input.files;
+
+    if (!files || files.length === 0) {
+        alert('Please choose some photos first');
         return;
     }
-    
+
+    const form = new FormData();
+    for (const f of files) {
+        form.append('files', f);
+    }
+
+    status.textContent = `Uploading ${files.length} photo(s)...`;
+
     try {
-        const response = await fetch('/api/images/scan', {
+        const response = await fetch('/api/images/upload', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder1, folder2 })
+            body: form
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
+            if (data.count === 0) {
+                status.textContent = 'None of those files were usable images.';
+                return;
+            }
+            // skipped covers non-images the picker let through, e.g. HEIC or video
+            status.textContent = data.skipped
+                ? `Uploaded ${data.count}, skipped ${data.skipped} unsupported file(s).`
+                : `Uploaded ${data.count} photo(s).`;
             allImages = data.images;
             document.getElementById('total-images-count').textContent = allImages.length;
             showStep(2);
             loadGallery(1);
         } else {
+            status.textContent = '';
             alert('Error: ' + data.error);
         }
     } catch (error) {
-        alert('Error scanning folders: ' + error.message);
+        status.textContent = '';
+        alert('Error uploading photos: ' + error.message);
     }
 }
 

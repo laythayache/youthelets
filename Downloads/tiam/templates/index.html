@@ -21,24 +21,14 @@
                 <h2 style="color: #856404;">⚠️ Face Detection Not Available</h2>
                 <p style="color: #856404; font-size: 16px; line-height: 1.6;">
                     <strong>The face detection and matching features are currently disabled.</strong><br>
-                    This app now uses Google Cloud Vision for face detection and a local embedding model for matching.
+                    The face models did not load on this server, so detection and matching are off.
                 </p>
                 <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
-                    <h3 style="margin-top: 0; color: #333;">To Fix This:</h3>
-                    <ol style="color: #333; line-height: 1.8;">
-                        <li><strong>Enable Google Cloud credentials:</strong><br>
-                            Set the environment variable <code>GOOGLE_APPLICATION_CREDENTIALS</code> to the path of your service account JSON key.
-                        </li>
-                        <li><strong>Install dependencies:</strong><br>
-                            Ensure the required Python packages are installed from <code>requirements.txt</code>.
-                        </li>
-                        <li><strong>Restart the server:</strong><br>
-                            Stop this server (Ctrl+C) and run <code>python app.py</code> again
-                        </li>
-                    </ol>
-                    <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                        See <strong>GUIDE.md</strong> for detailed instructions on enabling Google Cloud Vision.
+                    <p style="color: #333; margin: 0;">
+                        Nothing you can fix from here - the server needs a restart by whoever runs it.
+                        The error was:
                     </p>
+                    <pre style="color:#856404; white-space:pre-wrap; word-break:break-word; margin-top:10px;">{{ insightface_error }}</pre>
                 </div>
             </section>
             {% endif %}
@@ -47,9 +37,9 @@
                 <h2>Step 1: Select Data Source</h2>
                 <div class="source-options">
                     <div class="option-card" id="local-option">
-                        <div class="option-icon">📁</div>
-                        <h3>Local Folders</h3>
-                        <p>Use images from your local file system</p>
+                        <div class="option-icon">📤</div>
+                        <h3>Upload Photos</h3>
+                        <p>Pick photos from this device - no Google account needed</p>
                     </div>
                     <div class="option-card" id="drive-option">
                         <div class="option-icon">☁️</div>
@@ -61,14 +51,12 @@
                 <!-- Local Folder Input -->
                 <div class="input-section" id="local-input" style="display: none;">
                     <div class="input-group">
-                        <label>Reference Folder (Optional):</label>
-                        <input type="text" id="folder1" placeholder="e.g., C:/Users/Photos/Reference" class="input-field">
+                        <label>Choose photos (you can select a whole folder):</label>
+                        <input type="file" id="photo-files" class="input-field" multiple accept="image/jpeg,image/png,image/webp,image/bmp" webkitdirectory-hint>
+                        <small>JPG, PNG, WEBP or BMP. They stay on this server and only you can see them.</small>
                     </div>
-                    <div class="input-group">
-                        <label>Event Photos Folder:</label>
-                        <input type="text" id="folder2" placeholder="e.g., C:/Users/Photos/Events" class="input-field" required>
-                    </div>
-                    <button class="btn btn-primary" onclick="scanLocalFolders()">Scan Folders</button>
+                    <button class="btn btn-primary" onclick="uploadPhotos()">Upload &amp; Continue</button>
+                    <div id="upload-status" style="margin-top: 12px;"></div>
                 </div>
 
                 <!-- Google Drive Input -->
