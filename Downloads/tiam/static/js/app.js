@@ -164,9 +164,18 @@ async function authenticateDrive() {
         
         if (data.auth_url) {
             window.location.href = data.auth_url;
-        } else {
-            showAuthStatus('Error initiating authentication', 'error');
+            return;
         }
+        // the server distinguishes "nobody has configured Google yet" from a real
+        // failure; saying which one saves the visitor guessing at a dead end
+        if (data.setup_required) {
+            showAuthStatus(
+                'Google Drive is not set up on this server yet, so there is nothing to sign in to. '
+                + 'Use "Upload Photos" instead - it works without a Google account.',
+                'error');
+            return;
+        }
+        showAuthStatus(data.error || data.message || ('Could not start Google sign-in (HTTP ' + response.status + ')'), 'error');
     } catch (error) {
         showAuthStatus('Error: ' + error.message, 'error');
     }

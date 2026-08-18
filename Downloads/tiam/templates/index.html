@@ -44,7 +44,11 @@
                     <div class="option-card" id="drive-option">
                         <div class="option-icon">☁️</div>
                         <h3>Google Drive</h3>
-                        <p>Connect to Google Drive folders</p>
+                        {% if drive_configured %}
+                        <p>Browse your own Drive and pick folders or photos</p>
+                        {% else %}
+                        <p style="color:#991b1b;"><strong>Not set up on this server yet</strong><br>Use Upload Photos instead</p>
+                        {% endif %}
                     </div>
                 </div>
 

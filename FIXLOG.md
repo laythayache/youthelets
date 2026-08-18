@@ -92,3 +92,10 @@ from an external machine, and port 8501 still refused from the internet.
 - fix:
 - commit: e5f771d Calibrate the match threshold against high-resolution photos, not just LFW
 - files: CLAUDE.md, Downloads/tiam/app.py, Downloads/tiam/static/js/app.js
+
+## 2026-08-18 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: 7ca056b Browse and pick Google Drive folders and photos from the UI
+- files: CLAUDE.md, Downloads/tiam/app.py, Downloads/tiam/static/css/style.css, Downloads/tiam/static/js/app.js, Downloads/tiam/templates/index.html

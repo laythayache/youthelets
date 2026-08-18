@@ -267,6 +267,7 @@ def index():
     # Check if auto-load is configured
     auto_load_enabled = bool(YOUTHELETES_DRIVE_FOLDER_ID and os.path.exists(SERVICE_ACCOUNT_FILE))
     return render_template('index.html', 
+                         drive_configured=os.path.exists(CLIENT_SECRETS_FILE),
                          insightface_available=(face_detector is not None and embedding_model is not None), 
                          insightface_error=model_error,
                          auto_load_enabled=auto_load_enabled,
