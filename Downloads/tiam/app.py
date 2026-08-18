@@ -153,11 +153,16 @@ except Exception as e:
 
 # Global state
 VALID_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-# Calibrated 2026-08-18 on 200 same-person and 200 different-person LFW pairs run
-# through this exact pipeline. At 0.35 (the old InsightFace-era value) 2.5% of
-# different people scored as matches; at 0.45 that is 0% for only 0.5pp more misses.
-# Different-person scores topped out at 0.421, same-person 5th percentile was 0.574.
-SIM_THRESHOLD = 0.45
+# Calibrated 2026-08-18 on 300 same-person and 300 different-person LFW pairs run
+# through this exact pipeline (MTCNN + square 20% margin crop + vggface2):
+#   same-person   p5=0.596  p10=0.653  median=0.793
+#   different     p95=0.306 p99=0.419  max=0.508
+# LFW alone would suggest 0.55. It under-represents the hard tail: two different
+# high-resolution press photos (Jolie vs Siegel) score 0.585 through this pipeline,
+# above every LFW different-person pair. 0.60 clears that with a buffer and still
+# catches ~95% of true matches (5.3% missed on LFW). Re-run the calibration if the
+# crop, the model or the preprocessing changes - the number is pipeline-specific.
+SIM_THRESHOLD = 0.60
 BATCH = 128
 PAGE_SIZE = 20
 
@@ -202,7 +207,16 @@ def get_faces(img):
         if x2 <= x1 or y2 <= y1:
             continue
 
-        face_crop = img_rgb[y1:y2, x1:x2]
+        # Square the box and add 20% margin before cropping. Resizing a non-square box
+        # to 160x160 squashes the face, and a tight box drops the jaw and hairline that
+        # the embedding relies on. Measured: this widens the gap between same-person and
+        # different-person scores from 0.358 to 0.404.
+        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        side = max(x2 - x1, y2 - y1) * 1.20
+        sx1 = max(0, int(cx - side / 2)); sy1 = max(0, int(cy - side / 2))
+        sx2 = min(w, int(cx + side / 2)); sy2 = min(h, int(cy + side / 2))
+
+        face_crop = img_rgb[sy1:sy2, sx1:sx2]
         if face_crop.size == 0:
             continue
 
@@ -545,6 +559,14 @@ def session_upload_dir():
     return d
 
 
+def session_results_csv():
+    """Results file for this visitor only. A shared one lets two people using the
+    link overwrite each other's matches, and export the wrong photos."""
+    session_id = session.get('session_id', os.urandom(16).hex())
+    session['session_id'] = session_id
+    return os.path.join(app.config['OUTPUT_FOLDER'], f'matches_{session_id}.csv')
+
+
 @app.route('/api/images/upload', methods=['POST'])
 def upload_images():
     """Accept photos straight from the visitor's computer - no Google account needed"""
@@ -825,13 +847,14 @@ def run_matching():
         df["is_match"] = (df["max_similarity"] >= SIM_THRESHOLD).astype(int)
         
         # Save CSV
-        csv_path = os.path.join(app.config['OUTPUT_FOLDER'], 'matches.csv')
+        csv_path = session_results_csv()
         df.to_csv(csv_path, index=False)
         
         return jsonify({
             'success': True,
             'matched': int(df['is_match'].sum()),
             'total': len(df),
+            'threshold': SIM_THRESHOLD,
             'results': df.to_dict('records')
         })
     except Exception as e:
@@ -845,7 +868,7 @@ def export_matches():
         folder_name = data.get('folder_name', 'matched_photos')
         results = data.get('results', [])
         
-        csv_path = os.path.join(app.config['OUTPUT_FOLDER'], 'matches.csv')
+        csv_path = session_results_csv()
         if not os.path.exists(csv_path):
             return jsonify({'error': 'No matches found. Run matching first.'}), 400
         
@@ -892,7 +915,7 @@ def export_zip():
         data = request.json
         zip_name = data.get('zip_name', 'matched_photos.zip')
         
-        csv_path = os.path.join(app.config['OUTPUT_FOLDER'], 'matches.csv')
+        csv_path = session_results_csv()
         if not os.path.exists(csv_path):
             return jsonify({'error': 'No matches found. Run matching first.'}), 400
         
@@ -922,7 +945,7 @@ def export_to_drive():
         data = request.json
         folder_name = data.get('folder_name', 'Matched Photos')
         
-        csv_path = os.path.join(app.config['OUTPUT_FOLDER'], 'matches.csv')
+        csv_path = session_results_csv()
         if not os.path.exists(csv_path):
             return jsonify({'error': 'No matches found. Run matching first.'}), 400
         
@@ -976,7 +999,7 @@ def export_to_drive():
 def get_results():
     """Get matching results"""
     try:
-        csv_path = os.path.join(app.config['OUTPUT_FOLDER'], 'matches.csv')
+        csv_path = session_results_csv()
         if not os.path.exists(csv_path):
             return jsonify({'error': 'No results found'}), 404
         

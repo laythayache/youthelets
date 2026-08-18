@@ -11,13 +11,41 @@ a service account JSON that was never on disk (only `service_account.json.templa
 already a dependency. No credentials, no per-image billing. Verified: models load and
 detect on a server with no Google configuration of any kind.
 
-## 2026-08-18 — Different people matched each other
+## 2026-08-18 — Different people matched each other (revised twice)
 
-**Symptom:** two different women scored 0.594 against a 0.35 threshold — a false match.
-**Root cause:** `SIM_THRESHOLD = 0.35` was inherited from the InsightFace era. facenet
-embeddings have a different score distribution. **Fix:** calibrated on 200 same-person and
-200 different-person LFW pairs through this pipeline. 0.35 gave 2.5% false matches; 0.45
-gives 0% for 0.5pp more misses. Set to 0.45 with the measurement recorded in the code.
+**Symptom:** two different women (Jolie / Siegel press photos) scored 0.594 against a 0.35
+threshold — a false match. **Root cause:** `SIM_THRESHOLD = 0.35` was inherited from the
+InsightFace era; facenet embeddings score differently. **First fix** set 0.45 from 200+200 LFW
+pairs. **That was not enough** — the same pair still matched at 0.586, because LFW's 250px crops
+under-represent the hard tail: its different-person max was 0.508, while real high-resolution
+photos of different people reach 0.585.
+
+**Second cause found while investigating:** the crop resized a non-square detection box straight
+to 160x160, squashing the face, and clipped the jaw and hairline. Squaring the box with a 20%
+margin widened the same-vs-different gap from 0.358 to 0.404.
+
+**Final fix:** square+margin crop, and `SIM_THRESHOLD = 0.60` calibrated on 300+300 LFW pairs
+through the shipped pipeline (same-person p5 0.596 / p10 0.653 / median 0.793; different-person
+p99 0.419 / max 0.508). 0.60 clears the known hard pair (0.585) with a buffer and still catches
+~95% of true matches. Verified end-to-end through the live URL: 5/5 of the right person found,
+0 false matches, and the Jolie/Siegel pair now correctly rejected at 0.594.
+
+**Note the margin is thin** — that pair sits 0.006 below the line. Photos of genuinely similar
+people can still slip through. Re-run the calibration if the crop, model or preprocessing changes.
+
+## 2026-08-18 — Two visitors would overwrite each other's results
+
+**Symptom:** not yet observed; found before sharing the link. **Root cause:** matching wrote a
+single shared `output/matches.csv`, and export read it back. Two people using the link at once
+means the second run overwrites the first, and export then hands over the wrong person's photos.
+**Fix:** `session_results_csv()` — one results file per visitor, matching the per-session upload
+and Drive-download folders.
+
+## 2026-08-18 — Result badges contradicted the verdict beside them
+
+**Symptom:** a row could show an amber "medium" similarity badge next to a green "✓ Match".
+**Root cause:** the front end hardcoded 0.35/0.5 for colouring while the server matched on
+`SIM_THRESHOLD`. **Fix:** the API now returns `threshold` and the client colours against it.
 
 ## 2026-08-18 — Anyone with the link could read files off the server
 

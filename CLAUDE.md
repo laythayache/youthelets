@@ -43,10 +43,16 @@ say so out loud rather than picking one.
 - Detection is **MTCNN**, embeddings are **facenet-pytorch InceptionResnetV1 (vggface2)**.
   Both run locally. There is no Google Cloud Vision and no service account — do not
   reintroduce one, it costs money per image and buys nothing here.
-- **`SIM_THRESHOLD` is calibrated, not chosen.** 0.45, measured on 200 same-person and
-  200 different-person LFW pairs through this exact pipeline. If you change the crop, the
+- **`SIM_THRESHOLD` is calibrated, not chosen.** 0.60, measured on 300 same-person and
+  300 different-person LFW pairs through this exact pipeline. If you change the crop, the
   model, or the preprocessing, re-run that calibration — the number is only valid for the
   pipeline it was measured on.
+- **LFW alone will mislead you.** Its 250px crops put the different-person maximum at 0.508,
+  but two high-resolution photos of different people reach 0.585 through this pipeline. Any
+  threshold picked from LFW without a high-resolution check will be too permissive.
+- The crop squares the detection box and adds 20% margin before resizing to 160x160.
+  Resizing the raw box distorts the face and drops the jaw and hairline; squaring it widened
+  the same-vs-different gap from 0.358 to 0.404.
 - `MTCNN.extract()` looks like the right way to crop and is **wrong here**: with
   `post_process=False` it skips prewhitening and every embedding collapses to ~0.98
   similarity, matching everyone with everyone. The manual crop through `preprocess` is

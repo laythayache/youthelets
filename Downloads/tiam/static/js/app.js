@@ -484,9 +484,12 @@ function displayResults(data) {
         const tr = document.createElement('tr');
         
         const similarity = result.max_similarity;
+        // colour against the threshold the server actually used, or the badges
+        // contradict the Match/No Match column sitting next to them
+        const thr = data.threshold;
         let simClass = 'similarity-low';
-        if (similarity >= 0.5) simClass = 'similarity-high';
-        else if (similarity >= 0.35) simClass = 'similarity-medium';
+        if (similarity >= thr) simClass = 'similarity-high';
+        else if (similarity >= thr - 0.1) simClass = 'similarity-medium';
         
         const imageUrl = '/api/image?path=' + encodeURIComponent(result.image_path.replace(/\\/g, '/'));
         tr.innerHTML = `
