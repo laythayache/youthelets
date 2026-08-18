@@ -1,48 +1,19 @@
-# 🎯 Face Matching System
+# Face Matching System
 
-A modern web application for face recognition and matching across photo collections, with Google Drive integration.
+The app itself. See the [root README](../../README.md) for what it does and how the
+matching works, and [GUIDE.md](GUIDE.md) for running, deploying and debugging it.
 
-**📖 [See Complete Guide →](GUIDE.md)**
+Live at <https://169-58-16-247.sslip.io/>.
 
-## ✨ Features
-
-- 🎯 **Face Detection & Matching**: Uses Google Cloud Vision for detection and `facenet-pytorch` for embeddings/matching
-- ☁️ **Google Drive Integration**: Connect and load images directly from Google Drive
-- 📁 **Local Folder Support**: Also works with local file system folders
-- 🖼️ **Interactive UI**: Modern, responsive red-themed web interface
-- ✂️ **Face Cropping**: Interactive crop tool to select reference faces
-- 📊 **Results Dashboard**: View matching results with similarity scores
-- 📤 **Export Functionality**: Export matched images to organized folders
-
-## 🚀 Quick Start
-
-### Local Setup
+## Quick start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the application
-python app.py
+python -m venv venv
+./venv/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python app.py
 ```
 
-Visit `http://localhost:5000`
-
-**📖 For detailed setup, deployment, and usage instructions, see [GUIDE.md](GUIDE.md)**
-
-## 📚 Documentation
-
-**All setup, deployment, usage, configuration, and troubleshooting information is in [GUIDE.md](GUIDE.md)**
-
-The guide includes:
-- ✅ Complete local setup instructions
-- ✅ Free hosting deployment (Render, Railway, Fly.io)
-- ✅ Step-by-step usage guide
-- ✅ Configuration options
-- ✅ Troubleshooting section
-- ✅ Technical details
-
-## License
-
-This project is provided as-is for educational and personal use.
-
+Install torch from the CPU index first, or pip drags in ~2.5 GB of unused CUDA wheels.
+Then visit <http://localhost:5000>. Upload works straight away; Google Drive does not
+locally, because the OAuth redirect URI is registered against the live host.

@@ -106,3 +106,10 @@ from an external machine, and port 8501 still refused from the internet.
 - fix:
 - commit: 1e1c3b6 Stop tracking .claude/settings.json
 - files: .claude/settings.json, .gitignore
+
+## 2026-08-18 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: 7bef134 Correct the Drive section: it describes a browser that no longer exists
+- files: CLAUDE.md
