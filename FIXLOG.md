@@ -99,3 +99,10 @@ from an external machine, and port 8501 still refused from the internet.
 - fix:
 - commit: 7ca056b Browse and pick Google Drive folders and photos from the UI
 - files: CLAUDE.md, Downloads/tiam/app.py, Downloads/tiam/static/css/style.css, Downloads/tiam/static/js/app.js, Downloads/tiam/templates/index.html
+
+## 2026-08-18 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: 1e1c3b6 Stop tracking .claude/settings.json
+- files: .claude/settings.json, .gitignore

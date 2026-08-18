@@ -20,10 +20,12 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 import torchvision.transforms as transforms
 from PIL import Image
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.errors import HttpError
 import io
 import zipfile
 import requests
@@ -107,8 +109,13 @@ def safe_path(p):
 
 
 # Google Drive API configuration
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file']
+# drive.file only. It is the one Drive scope Google classes as non-sensitive, so the
+# app needs no verification and anyone can sign in - no test-user list, no warning
+# screen, no 7-day expiry. The cost is that the app only ever sees what the visitor
+# hands it through the Google Picker, which is also the safer arrangement.
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
 CLIENT_SECRETS_FILE = 'client_secrets.json'
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', '')  # developerKey for the Picker
 SERVICE_ACCOUNT_FILE = os.environ.get('SERVICE_ACCOUNT_FILE', 'service_account.json')  # For youtheletes drive
 
 # Load configuration from config.json if it exists, otherwise use environment variables
@@ -267,7 +274,7 @@ def index():
     # Check if auto-load is configured
     auto_load_enabled = bool(YOUTHELETES_DRIVE_FOLDER_ID and os.path.exists(SERVICE_ACCOUNT_FILE))
     return render_template('index.html', 
-                         drive_configured=os.path.exists(CLIENT_SECRETS_FILE),
+                         drive_configured=(os.path.exists(CLIENT_SECRETS_FILE) and bool(GOOGLE_API_KEY)),
                          insightface_available=(face_detector is not None and embedding_model is not None), 
                          insightface_error=model_error,
                          auto_load_enabled=auto_load_enabled,
@@ -554,57 +561,32 @@ def check_drive_id(value, allow_root=True):
     return value
 
 
-@app.route('/api/drive/browse', methods=['POST'])
-def browse_drive():
-    """List the folders and images inside one Drive folder, for the picker UI."""
-    service = user_drive_service()
-    if service is None:
+@app.route('/api/drive/picker-config')
+def picker_config():
+    """Hand the browser what Google's Picker needs, for this visitor only."""
+    if 'credentials' not in session:
         return jsonify({'error': 'Connect your Google Drive first', 'auth_required': True}), 401
 
-    try:
-        parent = check_drive_id((request.json or {}).get('parent_id'))
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    try:
-        folders, images = [], []
-        for target, query, fields in (
-            (folders, f"'{parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-             'nextPageToken, files(id, name)'),
-            (images, f"'{parent}' in parents and mimeType contains 'image/' and trashed = false",
-             'nextPageToken, files(id, name, thumbnailLink)'),
-        ):
-            token = None
-            while True:
-                resp = service.files().list(
-                    q=query, fields=fields, pageSize=200, pageToken=token,
-                    orderBy='name', supportsAllDrives=True, includeItemsFromAllDrives=True
-                ).execute()
-                target.extend(resp.get('files', []))
-                token = resp.get('nextPageToken')
-                # a browse UI does not need thousands of rows at once
-                if not token or len(target) >= 600:
-                    break
-
-        # breadcrumb, so the visitor can climb back out
-        trail = []
-        node = parent
-        while node and node != 'root' and len(trail) < 12:
-            meta = service.files().get(fileId=node, fields='id, name, parents',
-                                       supportsAllDrives=True).execute()
-            trail.insert(0, {'id': meta['id'], 'name': meta.get('name', '...')})
-            parents = meta.get('parents') or []
-            node = parents[0] if parents else None
-
+    if not GOOGLE_API_KEY:
         return jsonify({
-            'parent_id': parent,
-            'trail': trail,
-            'folders': folders,
-            'images': images,
-            'truncated': len(folders) >= 600 or len(images) >= 600
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            'error': 'The Google Picker API key is not configured on this server.',
+            'setup_required': True
+        }), 400
+
+    creds = Credentials(**session['credentials'])
+    # the picker is handed a live token, so refresh a stale one rather than fail
+    if not creds.valid and creds.refresh_token:
+        creds.refresh(GoogleRequest())
+        session['credentials'] = dict(session['credentials'], token=creds.token)
+
+    client_id = session['credentials'].get('client_id') or ''
+    return jsonify({
+        'api_key': GOOGLE_API_KEY,
+        'client_id': client_id,
+        # Picker wants the project number, which is the leading digits of the client id
+        'app_id': client_id.split('-')[0],
+        'access_token': creds.token
+    })
 
 
 @app.route('/api/drive/import', methods=['POST'])
@@ -620,6 +602,8 @@ def import_from_drive():
         file_ids = [check_drive_id(f, allow_root=False) for f in data.get('file_ids', [])]
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+
+    unreadable_folders = []
 
     if not folder_ids and not file_ids:
         return jsonify({'error': 'Nothing selected'}), 400
@@ -666,15 +650,28 @@ def import_from_drive():
 
     try:
         for fid in folder_ids:
-            meta = service.files().get(fileId=fid, fields='name', supportsAllDrives=True).execute()
-            walk(fid, os.path.join(dest, secure_filename(meta.get('name', fid)) or fid))
+            # Under drive.file a picked folder may or may not extend access to what is
+            # inside it. Rather than fail the whole import, note the ones we cannot read
+            # and let the visitor pick photos directly instead.
+            try:
+                meta = service.files().get(fileId=fid, fields='name', supportsAllDrives=True).execute()
+                walk(fid, os.path.join(dest, secure_filename(meta.get('name', fid)) or fid))
+            except HttpError as e:
+                if e.resp.status in (403, 404):
+                    unreadable_folders.append(fid)
+                else:
+                    raise
         for fid in file_ids:
             meta = service.files().get(fileId=fid, fields='name', supportsAllDrives=True).execute()
             fetch(fid, meta.get('name', fid + '.jpg'), dest)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-    return jsonify({'images': sorted(saved), 'count': len(saved)})
+    return jsonify({
+        'images': sorted(saved),
+        'count': len(saved),
+        'unreadable_folders': len(unreadable_folders)
+    })
 
 
 @app.route('/api/images/scan', methods=['POST'])

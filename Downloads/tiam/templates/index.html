@@ -72,23 +72,8 @@
                     </div>
 
                     <div id="drive-browser" style="display: none;">
-                        <div id="drive-trail" class="drive-trail"></div>
-                        <div id="drive-loading" style="display:none; padding:12px 0;">Loading…</div>
-
-                        <div class="input-group">
-                            <label>Folders</label>
-                            <div id="drive-folders-list" class="drive-list"></div>
-                        </div>
-
-                        <div class="input-group">
-                            <label>Photos in this folder <small id="drive-image-count"></small></label>
-                            <div id="drive-images-grid" class="drive-grid"></div>
-                        </div>
-
-                        <div id="drive-selection" class="drive-selection"></div>
-                        <button class="btn btn-secondary" onclick="driveSelectAllHere()">Select every photo here</button>
-                        <button class="btn btn-secondary" onclick="driveAddWholeFolder()">Add this whole folder (including subfolders)</button>
-                        <button class="btn btn-primary" onclick="driveImport()" id="drive-import-btn">Import selected</button>
+                        <p>Your photos stay private. This app only ever sees the ones you hand it in the next step.</p>
+                        <button class="btn btn-primary" onclick="openDrivePicker()">Choose photos from Google Drive</button>
                         <div id="drive-import-status" style="margin-top:12px;"></div>
                     </div>
                 </div>
@@ -190,6 +175,7 @@
         // Pass auto-load configuration to JavaScript
         const autoLoadEnabled = {{ 'true' if auto_load_enabled else 'false' }};
     </script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

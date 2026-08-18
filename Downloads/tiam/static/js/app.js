@@ -187,177 +187,134 @@ function showAuthStatus(message, type) {
     statusDiv.className = type === 'success' ? 'auth-success-msg' : 'auth-error-msg';
     if (type === 'success') {
         document.getElementById('drive-browser').style.display = 'block';
-        driveOpen('root');
     }
 }
 
-// --- Google Drive picker -------------------------------------------------
-// Selection survives moving between folders, so photos can be gathered from
-// several places and imported in one go.
-let drivePickedFiles = new Map();    // fileId -> name
-let drivePickedFolders = new Map();  // folderId -> name
-let driveCurrent = 'root';
-let driveCurrentName = 'My Drive';
+// --- Google Drive, via Google's own Picker --------------------------------
+// The app holds the drive.file scope, which grants access only to what the
+// visitor hands over in the Picker. That is why there is no folder browser
+// here: listing someone's Drive is not something this scope can do.
+let pickerApiLoaded = false;
 
-async function driveOpen(parentId) {
-    const loading = document.getElementById('drive-loading');
-    loading.style.display = 'block';
-    try {
-        const response = await fetch('/api/drive/browse', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parent_id: parentId || 'root' })
+function onPickerApiLoad() {
+    pickerApiLoaded = true;
+}
+
+function loadPickerApi() {
+    return new Promise((resolve, reject) => {
+        if (pickerApiLoaded) return resolve();
+        if (typeof gapi === 'undefined') {
+            return reject(new Error('Google could not be reached from this browser.'));
+        }
+        gapi.load('picker', {
+            callback: () => { pickerApiLoaded = true; resolve(); },
+            onerror: () => reject(new Error('Google Picker failed to load.'))
         });
-        const data = await response.json();
+    });
+}
+
+async function openDrivePicker() {
+    const status = document.getElementById('drive-import-status');
+    status.textContent = 'Opening Google Drive…';
+
+    let cfg;
+    try {
+        const response = await fetch('/api/drive/picker-config');
+        cfg = await response.json();
         if (!response.ok) {
-            if (data.auth_required) {
+            status.textContent = '';
+            if (cfg.auth_required) {
                 showAuthStatus('Connect your Google Drive first', 'error');
                 document.getElementById('drive-browser').style.display = 'none';
             } else {
-                alert('Drive error: ' + data.error);
+                showAuthStatus(cfg.error || 'Could not open Google Drive', 'error');
             }
             return;
         }
-        driveCurrent = data.parent_id;
-        renderDrive(data);
     } catch (error) {
-        alert('Drive error: ' + error.message);
-    } finally {
-        loading.style.display = 'none';
-    }
-}
-
-function renderDrive(data) {
-    const trail = document.getElementById('drive-trail');
-    trail.innerHTML = '';
-    const crumbs = [{ id: 'root', name: 'My Drive' }].concat(data.trail);
-    driveCurrentName = crumbs[crumbs.length - 1].name;
-    crumbs.forEach((c, i) => {
-        const a = document.createElement('a');
-        a.href = 'javascript:void(0)';
-        a.textContent = c.name;
-        a.onclick = () => driveOpen(c.id);
-        trail.appendChild(a);
-        if (i < crumbs.length - 1) trail.appendChild(document.createTextNode('  >  '));
-    });
-
-    const folders = document.getElementById('drive-folders-list');
-    folders.innerHTML = '';
-    if (data.folders.length === 0) {
-        folders.innerHTML = '<em>No subfolders here.</em>';
-    }
-    data.folders.forEach(f => {
-        const row = document.createElement('div');
-        row.className = 'drive-row';
-        const open = document.createElement('a');
-        open.href = 'javascript:void(0)';
-        open.textContent = 'Folder: ' + f.name;
-        open.onclick = () => driveOpen(f.id);
-        const add = document.createElement('button');
-        add.className = 'btn btn-secondary btn-small';
-        add.textContent = drivePickedFolders.has(f.id) ? 'Added' : 'Add folder';
-        add.onclick = () => {
-            if (drivePickedFolders.has(f.id)) drivePickedFolders.delete(f.id);
-            else drivePickedFolders.set(f.id, f.name);
-            add.textContent = drivePickedFolders.has(f.id) ? 'Added' : 'Add folder';
-            renderDriveSelection();
-        };
-        row.appendChild(open);
-        row.appendChild(add);
-        folders.appendChild(row);
-    });
-
-    const grid = document.getElementById('drive-images-grid');
-    grid.innerHTML = '';
-    document.getElementById('drive-image-count').textContent =
-        data.images.length ? '(' + data.images.length + (data.truncated ? '+' : '') + ')' : '';
-    if (data.images.length === 0) {
-        grid.innerHTML = '<em>No photos directly in this folder.</em>';
-    }
-    data.images.forEach(img => {
-        const cell = document.createElement('div');
-        cell.className = 'drive-cell' + (drivePickedFiles.has(img.id) ? ' picked' : '');
-        cell.title = img.name;
-        if (img.thumbnailLink) {
-            const thumb = document.createElement('img');
-            thumb.src = img.thumbnailLink;
-            thumb.referrerPolicy = 'no-referrer';
-            thumb.loading = 'lazy';
-            cell.appendChild(thumb);
-        } else {
-            cell.appendChild(document.createTextNode(img.name));
-        }
-        cell.onclick = () => {
-            if (drivePickedFiles.has(img.id)) drivePickedFiles.delete(img.id);
-            else drivePickedFiles.set(img.id, img.name);
-            cell.classList.toggle('picked');
-            renderDriveSelection();
-        };
-        grid.appendChild(cell);
-    });
-
-    renderDriveSelection();
-}
-
-function renderDriveSelection() {
-    const n = drivePickedFiles.size, m = drivePickedFolders.size;
-    const box = document.getElementById('drive-selection');
-    box.textContent = (n || m)
-        ? 'Selected: ' + n + ' photo(s) and ' + m + ' folder(s)'
-        : 'Nothing selected yet - click photos, or add a folder.';
-    document.getElementById('drive-import-btn').disabled = !(n || m);
-}
-
-function driveSelectAllHere() {
-    document.querySelectorAll('#drive-images-grid .drive-cell').forEach(c => {
-        if (!c.classList.contains('picked')) c.click();
-    });
-}
-
-function driveAddWholeFolder() {
-    if (driveCurrent === 'root') {
-        alert('Open a folder first, or use "Add folder" next to one in the list.');
+        status.textContent = '';
+        alert('Could not reach the server: ' + error.message);
         return;
     }
-    drivePickedFolders.set(driveCurrent, driveCurrentName);
-    renderDriveSelection();
+
+    try {
+        await loadPickerApi();
+    } catch (error) {
+        status.textContent = '';
+        alert(error.message);
+        return;
+    }
+
+    // photos, plus a folder view so a whole shoot can be handed over at once
+    const photos = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(true);
+
+    const picker = new google.picker.PickerBuilder()
+        .setTitle('Choose the photos to search')
+        .setOAuthToken(cfg.access_token)
+        .setDeveloperKey(cfg.api_key)
+        .setAppId(cfg.app_id)
+        .addView(photos)
+        .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+        .setCallback(pickerCallback)
+        .build();
+
+    status.textContent = '';
+    picker.setVisible(true);
 }
 
-async function driveImport() {
+async function pickerCallback(data) {
+    if (data.action !== google.picker.Action.PICKED) {
+        return;
+    }
+
+    const fileIds = [];
+    const folderIds = [];
+    data.docs.forEach(doc => {
+        if (doc.mimeType === 'application/vnd.google-apps.folder') folderIds.push(doc.id);
+        else fileIds.push(doc.id);
+    });
+
     const status = document.getElementById('drive-import-status');
-    status.textContent = 'Copying from Google Drive - whole folders can take a while.';
-    document.getElementById('drive-import-btn').disabled = true;
+    status.textContent = 'Copying ' + (fileIds.length + folderIds.length)
+        + ' item(s) from Google Drive — a whole folder can take a while.';
+
     try {
         const response = await fetch('/api/drive/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                file_ids: Array.from(drivePickedFiles.keys()),
-                folder_ids: Array.from(drivePickedFolders.keys())
-            })
+            body: JSON.stringify({ file_ids: fileIds, folder_ids: folderIds })
         });
-        const data = await response.json();
+        const result = await response.json();
         if (!response.ok) {
             status.textContent = '';
-            alert('Error: ' + data.error);
+            alert('Error: ' + result.error);
             return;
         }
-        if (data.count === 0) {
-            status.textContent = 'Nothing usable was found in that selection.';
+
+        if (result.count === 0) {
+            status.textContent = result.unreadable_folders
+                ? 'Google did not grant access to that folder. Open the folder in the picker and select the photos themselves.'
+                : 'No usable photos were found in that selection.';
             return;
         }
-        status.textContent = 'Imported ' + data.count + ' photo(s).';
-        allImages = data.images;
+
+        status.textContent = 'Imported ' + result.count + ' photo(s).'
+            + (result.unreadable_folders
+                ? ' ' + result.unreadable_folders + ' folder(s) could not be opened — select the photos inside them instead.'
+                : '');
+
+        allImages = result.images;
         document.getElementById('total-images-count').textContent = allImages.length;
         showStep(2);
         loadGallery(1);
     } catch (error) {
         status.textContent = '';
         alert('Error importing: ' + error.message);
-    } finally {
-        document.getElementById('drive-import-btn').disabled = false;
     }
 }
+
 
 async function loadGallery(page) {
     try {
