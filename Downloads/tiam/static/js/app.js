@@ -217,21 +217,51 @@ function showAuthStatus(message, type) {
 // The app holds the drive.file scope, which grants access only to what the
 // visitor hands over in the Picker. That is why there is no folder browser
 // here: listing someone's Drive is not something this scope can do.
-let pickerApiLoaded = false;
-
-function onPickerApiLoad() {
-    pickerApiLoaded = true;
+// Anything that goes wrong in the browser is invisible from the server, which is
+// why "nothing happened" was so hard to chase. Ship it back to the log instead.
+function clientLog(where, message) {
+    try {
+        fetch('/api/client-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ where: where, message: String(message) })
+        });
+    } catch (e) { /* logging must never break the page */ }
 }
 
-function loadPickerApi() {
+window.addEventListener('error', e => {
+    clientLog('window.error', (e.message || '?') + ' @ ' + (e.filename || '?') + ':' + (e.lineno || 0));
+});
+window.addEventListener('unhandledrejection', e => {
+    clientLog('unhandled', (e.reason && e.reason.message) || String(e.reason));
+});
+
+let pickerApiLoaded = false;
+
+// api.js is loaded async, so gapi is usually NOT there yet when someone clicks.
+// Waiting for it is the difference between working and "Google could not be reached".
+function waitForGapi(timeoutMs) {
     return new Promise((resolve, reject) => {
-        if (pickerApiLoaded) return resolve();
-        if (typeof gapi === 'undefined') {
-            return reject(new Error('Google could not be reached from this browser.'));
-        }
+        const started = Date.now();
+        (function poll() {
+            if (typeof gapi !== 'undefined') return resolve();
+            if (Date.now() - started > timeoutMs) {
+                return reject(new Error('Google\'s picker library did not load. An ad blocker or network filter may be blocking apis.google.com.'));
+            }
+            setTimeout(poll, 100);
+        })();
+    });
+}
+
+async function loadPickerApi() {
+    if (pickerApiLoaded) return;
+    await waitForGapi(10000);
+    await new Promise((resolve, reject) => {
         gapi.load('picker', {
             callback: () => { pickerApiLoaded = true; resolve(); },
-            onerror: () => reject(new Error('Google Picker failed to load.'))
+            onerror: () => reject(new Error('Google Picker failed to load.')),
+            timeout: 10000,
+            ontimeout: () => reject(new Error('Google Picker timed out loading.'))
         });
     });
 }
@@ -239,6 +269,7 @@ function loadPickerApi() {
 async function openDrivePicker() {
     const status = document.getElementById('drive-import-status');
     status.textContent = 'Opening Google Drive…';
+    clientLog('picker', 'open clicked');
 
     let cfg;
     try {
@@ -246,8 +277,9 @@ async function openDrivePicker() {
         cfg = await response.json();
         if (!response.ok) {
             status.textContent = '';
+            clientLog('picker', 'config ' + response.status + ' ' + (cfg.error || ''));
             if (cfg.auth_required) {
-                showAuthStatus('Connect your Google Drive first', 'error');
+                showAuthStatus('Your Google session expired. Connect again.', 'error');
                 document.getElementById('drive-browser').style.display = 'none';
             } else {
                 showAuthStatus(cfg.error || 'Could not open Google Drive', 'error');
@@ -256,6 +288,7 @@ async function openDrivePicker() {
         }
     } catch (error) {
         status.textContent = '';
+        clientLog('picker', 'config fetch failed: ' + error.message);
         alert('Could not reach the server: ' + error.message);
         return;
     }
@@ -264,30 +297,38 @@ async function openDrivePicker() {
         await loadPickerApi();
     } catch (error) {
         status.textContent = '';
+        clientLog('picker', 'library: ' + error.message);
         alert(error.message);
         return;
     }
 
-    // photos, plus a folder view so a whole shoot can be handed over at once
-    const photos = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
-        .setIncludeFolders(true)
-        .setSelectFolderEnabled(true);
+    try {
+        const photos = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+            .setIncludeFolders(true)
+            .setSelectFolderEnabled(true);
 
-    const picker = new google.picker.PickerBuilder()
-        .setTitle('Choose the photos to search')
-        .setOAuthToken(cfg.access_token)
-        .setDeveloperKey(cfg.api_key)
-        .setAppId(cfg.app_id)
-        .addView(photos)
-        .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
-        .setCallback(pickerCallback)
-        .build();
+        const picker = new google.picker.PickerBuilder()
+            .setTitle('Choose the photos to search')
+            .setOAuthToken(cfg.access_token)
+            .setDeveloperKey(cfg.api_key)
+            .setAppId(cfg.app_id)
+            .addView(photos)
+            .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+            .setCallback(pickerCallback)
+            .build();
 
-    status.textContent = '';
-    picker.setVisible(true);
+        status.textContent = '';
+        picker.setVisible(true);
+        clientLog('picker', 'opened');
+    } catch (error) {
+        status.textContent = '';
+        clientLog('picker', 'build failed: ' + error.message);
+        alert('Google Picker could not start: ' + error.message);
+    }
 }
 
 async function pickerCallback(data) {
+    clientLog('picker', 'callback action=' + data.action);
     if (data.action !== google.picker.Action.PICKED) {
         return;
     }
@@ -298,6 +339,7 @@ async function pickerCallback(data) {
         if (doc.mimeType === 'application/vnd.google-apps.folder') folderIds.push(doc.id);
         else fileIds.push(doc.id);
     });
+    clientLog('picker', 'picked ' + fileIds.length + ' file(s), ' + folderIds.length + ' folder(s)');
 
     const status = document.getElementById('drive-import-status');
     status.textContent = 'Copying ' + (fileIds.length + folderIds.length)
@@ -312,6 +354,7 @@ async function pickerCallback(data) {
         const result = await response.json();
         if (!response.ok) {
             status.textContent = '';
+            clientLog('picker', 'import failed ' + response.status + ' ' + (result.error || ''));
             alert('Error: ' + result.error);
             return;
         }
@@ -334,10 +377,10 @@ async function pickerCallback(data) {
         loadGallery(1);
     } catch (error) {
         status.textContent = '';
+        clientLog('picker', 'import threw: ' + error.message);
         alert('Error importing: ' + error.message);
     }
 }
-
 
 async function loadGallery(page) {
     try {

@@ -593,6 +593,16 @@ def check_drive_id(value, allow_root=True):
     return value
 
 
+@app.route('/api/client-log', methods=['POST'])
+def client_log():
+    """Browser-side failures are invisible from here, so let the page report them."""
+    data = request.json or {}
+    where = str(data.get('where', '?'))[:60]
+    message = str(data.get('message', ''))[:400]
+    print(f'[client] {where}: {message}', flush=True)
+    return ('', 204)
+
+
 @app.route('/api/drive/picker-config')
 def picker_config():
     """Hand the browser what Google's Picker needs, for this visitor only."""
@@ -639,6 +649,8 @@ def import_from_drive():
 
     if not folder_ids and not file_ids:
         return jsonify({'error': 'Nothing selected'}), 400
+
+    print(f'[drive] import requested: {len(file_ids)} file(s), {len(folder_ids)} folder(s)', flush=True)
 
     dest = os.path.join(session_upload_dir(), 'drive')
     os.makedirs(dest, exist_ok=True)
@@ -699,6 +711,8 @@ def import_from_drive():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+    print(f'[drive] import done: {len(saved)} photo(s) saved, '
+          f'{len(unreadable_folders)} folder(s) refused', flush=True)
     return jsonify({
         'images': sorted(saved),
         'count': len(saved),
