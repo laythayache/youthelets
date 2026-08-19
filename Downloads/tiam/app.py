@@ -12,7 +12,7 @@ import base64
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file, session, make_response
+from flask import Flask, render_template, request, jsonify, send_file, session, make_response, redirect
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import torch
@@ -275,6 +275,7 @@ def index():
     auto_load_enabled = bool(YOUTHELETES_DRIVE_FOLDER_ID and os.path.exists(SERVICE_ACCOUNT_FILE))
     return render_template('index.html', 
                          drive_configured=(os.path.exists(CLIENT_SECRETS_FILE) and bool(GOOGLE_API_KEY)),
+                         drive_connected=('credentials' in session),
                          insightface_available=(face_detector is not None and embedding_model is not None), 
                          insightface_error=model_error,
                          auto_load_enabled=auto_load_enabled,
@@ -309,15 +310,22 @@ def auth():
 
 @app.route('/auth/callback')
 def auth_callback():
-    """Handle OAuth callback"""
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        redirect_uri=request.url_root + 'auth/callback',
-        state=session['state']
-    )
-    flow.fetch_token(authorization_response=request.url)
-    credentials = flow.credentials
+    """Finish the Google sign-in and put the visitor back in the app, connected."""
+    try:
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            redirect_uri=request.url_root + 'auth/callback',
+            state=session.get('state')
+        )
+        flow.fetch_token(authorization_response=request.url)
+        credentials = flow.credentials
+    except Exception as e:
+        # Google sends people back here when they decline, too. A traceback is not
+        # an answer for someone who just clicked Cancel.
+        print(f"OAuth callback failed: {e}")
+        return redirect('/?drive=failed')
+
     session['credentials'] = {
         'token': credentials.token,
         'refresh_token': credentials.refresh_token,
@@ -326,7 +334,8 @@ def auth_callback():
         'client_secret': credentials.client_secret,
         'scopes': credentials.scopes
     }
-    return render_template('auth_success.html')
+    return redirect('/?drive=connected')
+
 
 def get_youtheletes_service():
     """Get Google Drive service for youtheletes using service account"""

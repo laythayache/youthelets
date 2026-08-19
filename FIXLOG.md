@@ -2,6 +2,19 @@
 
 Newest first. One entry per real fix: symptom, root cause, fix, commit.
 
+## 2026-08-19 — Signing in led to a dead end
+
+**Symptom:** after a successful Google sign-in the visitor landed on a page reading
+"You can now close this window and return to the main application", with a Close button
+that did nothing. **Root cause:** `auth_success.html` was written for a popup flow, but the
+app sends the visitor to Google in their **own tab** (`window.location.href`). There was no
+window to close and nothing to return to - and `window.close()` is blocked by browsers on a
+tab the script did not open, so the button was inert as well. **Fix:** the callback now
+redirects to `/?drive=connected` and the front end drops the visitor straight into the Drive
+step with the picker showing; `auth_success.html` is deleted. A failed or declined sign-in
+redirects to `/?drive=failed` with a plain message instead of a 500 traceback - verified: a
+bare `/auth/callback` returns 302 to `?drive=failed`.
+
 ## 2026-08-18 — App could not run at all: no Google credentials existed
 
 **Symptom:** every match raised `RuntimeError`; the page rendered a "Face Detection Not
@@ -113,3 +126,10 @@ from an external machine, and port 8501 still refused from the internet.
 - fix:
 - commit: 7bef134 Correct the Drive section: it describes a browser that no longer exists
 - files: CLAUDE.md
+
+## 2026-08-18 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: 8cffd08 Drive card promised browsing, which drive.file cannot do
+- files: Downloads/tiam/templates/index.html

@@ -12,12 +12,35 @@ let matchingResults = [];
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
-    
+    handleDriveReturn();
+
     // Auto-load if configured
     if (typeof autoLoadEnabled !== 'undefined' && autoLoadEnabled) {
         autoLoadFromDrive();
     }
 });
+
+// Google sends the visitor back to /?drive=... in the same tab they left from,
+// so pick that up and drop them straight into the Drive step rather than on a
+// page telling them to close a window they never opened.
+function handleDriveReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('drive');
+    const connected = (typeof driveConnected !== 'undefined' && driveConnected);
+
+    if (outcome === 'failed') {
+        selectSource('drive');
+        showAuthStatus('Google sign-in did not complete. You can try again, or use Upload Photos instead.', 'error');
+    } else if (outcome === 'connected' || connected) {
+        selectSource('drive');
+        showAuthStatus('Connected to Google Drive.', 'success');
+    }
+
+    if (outcome) {
+        // do not leave the marker in the address bar, or a refresh replays it
+        window.history.replaceState({}, '', window.location.pathname);
+    }
+}
 
 async function autoLoadFromDrive() {
     // Hide folder selection UI

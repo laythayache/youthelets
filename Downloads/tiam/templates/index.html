@@ -174,6 +174,7 @@
     <script>
         // Pass auto-load configuration to JavaScript
         const autoLoadEnabled = {{ 'true' if auto_load_enabled else 'false' }};
+        const driveConnected = {{ 'true' if drive_connected else 'false' }};
     </script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
