@@ -2,6 +2,20 @@
 
 Newest first. One entry per real fix: symptom, root cause, fix, commit.
 
+## 2026-08-19 — Front-end deploys did not reach anyone for a year
+
+**Symptom:** after signing in, the page did nothing - no Drive panel, and `?drive=connected`
+was left sitting in the address bar although the new code strips it. **Root cause:**
+`SEND_FILE_MAX_AGE_DEFAULT = 31536000` put a **one year** `Cache-Control` on every static
+file. The browser was not serving a stale copy by accident; it had been told not to ask
+again until 2027. The server had the new `app.js`; the browser never requested it. Every
+front-end change since the app first loaded was invisible to anyone who had visited before.
+**Fix:** static URLs are stamped with the file's mtime (`app.js?v=<mtime>`), which keeps the
+long cache and still invalidates instantly because a changed file is a different URL. HTML
+is now `no-store`, or it would keep pointing at the old stamps. **Proven both halves:**
+touching `app.js` moved its stamp (1787125763 -> 1787126103) while the untouched
+`style.css` stamp stayed at 1787056956 - it invalidates what changed and nothing else.
+
 ## 2026-08-19 — Signing in led to a dead end
 
 **Symptom:** after a successful Google sign-in the visitor landed on a page reading
@@ -133,3 +147,10 @@ from an external machine, and port 8501 still refused from the internet.
 - fix:
 - commit: 8cffd08 Drive card promised browsing, which drive.file cannot do
 - files: Downloads/tiam/templates/index.html
+
+## 2026-08-19 - TODO one line summary
+- symptom:
+- root cause:
+- fix:
+- commit: b5397d2 Signing in led to a dead end, so return the visitor to the app
+- files: Downloads/tiam/app.py, Downloads/tiam/static/js/app.js, Downloads/tiam/templates/auth_success.html, Downloads/tiam/templates/index.html

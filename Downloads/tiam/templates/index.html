@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Face Matching System</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -177,7 +177,7 @@
         const driveConnected = {{ 'true' if drive_connected else 'false' }};
     </script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ static_url('js/app.js') }}"></script>
 </body>
 </html>
 

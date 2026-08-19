@@ -12,7 +12,7 @@ import base64
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file, session, make_response, redirect
+from flask import Flask, render_template, request, jsonify, send_file, session, make_response, redirect, url_for
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import torch
@@ -50,6 +50,29 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static fi
 import signal
 if hasattr(signal, 'SIGALRM'):
     signal.signal(signal.SIGALRM, lambda s, f: None)  # Prevent timeout on long operations
+
+def static_url(filename):
+    """Static URL stamped with the file's mtime, so a deploy actually reaches browsers."""
+    path = os.path.join(app.root_path, 'static', filename)
+    try:
+        return url_for('static', filename=filename, v=int(os.stat(path).st_mtime))
+    except OSError:
+        return url_for('static', filename=filename)
+
+
+@app.context_processor
+def inject_static_url():
+    return {'static_url': static_url}
+
+
+@app.after_request
+def dont_cache_pages(response):
+    """HTML must never be cached, or it keeps pointing at the old asset URLs."""
+    if response.mimetype == 'text/html':
+        response.headers['Cache-Control'] = 'no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+    return response
+
 
 # Image cache - stores processed images in memory
 class SimpleImageCache:
